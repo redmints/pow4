@@ -23,9 +23,12 @@ class Client(threading.Thread):
         self.ip = ip
         self.port = port
         self.socket = socket
+        self.time = []
+        self.send_time = None
         print("New client from " + str(self.ip) + " on port " + str(self.port))
 
     def send(self, payload):
+        self.send_time = time.time()
         self.socket.send(payload)
 
     def getName(self):
@@ -42,18 +45,20 @@ class Client(threading.Thread):
             response = self.socket.recv(2048)
             if response == b'':
                 break
+            while b'}' not in response:
+                response += self.socket.recv(2048)
             if response != "":
                 try:
+                    response = response.decode().split('}')[0] + '}'
                     payload = json.loads(response)
                 except:
                     continue
                 if game:
+                    if self.send_time != None:
+                        self.time.append(time.time()-self.send_time)
                     if ("action" in payload) and (payload["action"] == "play") and ("column" in payload) and (payload["column"].isdigit()):
                         if game.last == self.getName():
-                            obj = {
-                                "type": "ERR",
-                                "payload": "WAIT_FOR_PLAYER"
-                            }
+                            obj = {"type": "ERR","payload": "WAIT_FOR_PLAYER"}
                             self.send(json.dumps(obj).encode())
                             continue
                         x, y = game.put(int(payload["column"]), self.getName())
@@ -63,52 +68,29 @@ class Client(threading.Thread):
                             finished = game.isFinished(x, y, self.getName())
                             if finished != None:
                                 print("Game finished --> " + str(finished) + " WIN !!!")
-                                obj = {
-                                    "type": "END",
-                                    "win": True,
-                                }
+                                obj = {"type": "END","win": True}
                                 self.send(json.dumps(obj).encode())
-                                obj = {
-                                    "type": "END",
-                                    "win": False,
-                                }
+                                obj = {"type": "END","win": False}
                                 if game.client1 == self:
                                     game.client2.send(json.dumps(obj).encode())
                                 else:
                                     game.client1.send(json.dumps(obj).encode())
                                 break
-                            obj = {
-                                "type": "PLAY_INFO",
-                                "play": False,
-                                "payload": game.board
-                            }
+                            obj = {"type": "PLAY_INFO","play": False,"payload": game.board}
                             self.send(json.dumps(obj).encode())
-                            obj = {
-                                "type": "PLAY_INFO",
-                                "play": True,
-                                "payload": game.board
-                            }
+                            obj = {"type": "PLAY_INFO","play": True,"payload": game.board}
                             if game.client1 == self:
                                 game.client2.send(json.dumps(obj).encode())
                             else:
                                 game.client1.send(json.dumps(obj).encode())
                         else:
-                            obj = {
-                                "type": "ERR",
-                                "payload": "BAD_INPUT"
-                            }
+                            obj = {"type": "ERR","payload": "BAD_INPUT"}
                             self.send(json.dumps(obj).encode())
                     else:
-                        obj = {
-                            "type": "ERR",
-                            "payload": "BAD_PAYLOAD"
-                        }
+                        obj = {"type": "ERR","payload": "BAD_PAYLOAD"}
                         self.send(json.dumps(obj).encode())
                 else:
-                    obj = {
-                        "type": "ERR",
-                        "payload": "GAME_NOT_STARTED"
-                    }
+                    obj = {"type": "ERR","payload": "GAME_NOT_STARTED"}
                     self.send(json.dumps(obj).encode())
         print("Connexion lost with " + str(self.ip) + " on port " + str(self.port))
         clients.remove(self)
@@ -130,21 +112,13 @@ class Game():
 
     def start(self):
         rand = randrange(10000)%2
-        objTrue = {
-                "type": "START",
-                "play": True
-            }
-        objFalse = {
-                "type": "START",
-                "play": False
-            }
         if rand == 0:
-            self.client1.send(json.dumps(objTrue).encode())
-            self.client2.send(json.dumps(objFalse).encode())
+            self.client1.send(json.dumps({"type": "START", "you": self.client1.getName(), "other": self.client2.getName(), "play": True}).encode())
+            self.client2.send(json.dumps({"type": "START", "you": self.client2.getName(), "other": self.client1.getName(), "play": False}).encode())
             self.last = self.client2.getName()
         else:
-            self.client2.send(json.dumps(objTrue).encode())
-            self.client1.send(json.dumps(objFalse).encode())
+            self.client2.send(json.dumps({"type": "START", "you": self.client2.getName(), "other": self.client1.getName(), "play": True}).encode())
+            self.client1.send(json.dumps({"type": "START", "you": self.client1.getName(), "other": self.client2.getName(), "play": False}).encode())
             self.last = self.client1.getName()
 
     def getLastInserted(self, column):
