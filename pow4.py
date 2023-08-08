@@ -13,23 +13,24 @@ print_char = {}
 print_color = {}
 has_one = False
 
-socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-socket.bind(('', 2023))
-socket.listen(5)
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(('', 2023))
+sock.listen(5)
 
 class Client(threading.Thread):
-    def __init__(self, ip, port, socket):
+    def __init__(self, ip, port, sock):
         threading.Thread.__init__(self)
         self.ip = ip
         self.port = port
-        self.socket = socket
+        self.sock = sock
         self.time = []
         self.send_time = None
         print("New client from " + str(self.ip) + " on port " + str(self.port))
 
     def send(self, payload):
         self.send_time = time.time()
-        self.socket.send(payload)
+        self.sock.send(payload)
 
     def getName(self):
         return str(self.ip)+str(self.port)
@@ -42,11 +43,11 @@ class Client(threading.Thread):
         global t
 
         while True:
-            response = self.socket.recv(2048)
+            response = self.sock.recv(2048)
             if response == b'':
                 break
             while b'}' not in response:
-                response += self.socket.recv(2048)
+                response += self.sock.recv(2048)
             if response != "":
                 try:
                     response = response.decode().split('}')[0] + '}'
@@ -237,7 +238,7 @@ class Server(threading.Thread):
         global print_color
         global game
         while True:
-            (client, (ip, port)) = socket.accept()
+            (client, (ip, port)) = sock.accept()
             if len(clients) == 2:
                 client.close()
                 continue
