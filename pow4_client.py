@@ -7,6 +7,7 @@ m_hote = "localhost"
 m_port = 2023
 m_full_align_score = 10000
 m_max_depth = 4
+m_score_count_to_keep = 3   # nombre de meilleurs scores a explorer parmi toutes les positions
 
 m_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 m_socket.connect((m_hote, m_port))
@@ -36,6 +37,7 @@ def get_one_align_score(board, x_init, y_init, x_shift, y_shift, id):
   y_len = len(board[0])
   x = x_init
   y = y_init
+  y_sum = 0
 
   # on parcourt un alignement
   for shift in range(4):
@@ -45,6 +47,7 @@ def get_one_align_score(board, x_init, y_init, x_shift, y_shift, id):
       score = None
       break
     else:
+      y_sum += y
       # on ne sort pas, on peut analyser le jeton
       val = board[x][y]
       if val == 0:
@@ -66,7 +69,12 @@ def get_one_align_score(board, x_init, y_init, x_shift, y_shift, id):
     if score == 4:
       score = m_full_align_score   # jackpot
     else:
-      score *= 2      # on favorise un alignement plutot que des jetons isoles
+      if score != 0:
+        # on favorise un alignement plutot que des jetons isoles
+        score *= 2
+        # on favorise les alignements du bas de la grille pour gagner plus vite
+        y_moy = y_sum // 4
+        score *= (y_len - y_moy)
 
   return score
 
@@ -125,47 +133,67 @@ def is_full(board, x):
     full = False
   return full
 
+# calcule le score correspondant a un seul point joue a une position
+def get_one_point_score(board, position, player, other, depth):
+  end = False
+  score = 0
+  new_board = board   # on pointe sur le tableau courant par defaut
 
-# calcule le score lorsqu'on joue a une position
-def get_play_score(board, position, player, other, depth):
   # on ne peut jouer que s'il reste de la place
   if is_full(board, position):
-    return None
+    score = None
 
-  # on place le jeton dans un nouveau tableau
-  new_board = deepcopy(board)
-  new_board[position][get_last(position, board)] = player
-
-  # calcul du nouveau score du joueur
-  score = 0
-  end = False
-  player_score = get_score(new_board, player)
-  if player_score >= m_full_align_score:
-    # si le joueur a gagne, on arrete de jouer, pas besoin de calculer le score de l'autre
-    end = True
-    score = player_score
   else:
-    other_score = get_score(new_board, other)
-    # on deduit le score de l'autre pour que le score global indique si le jeton profite plus au joueur qu'a l'autre
-    score = player_score - other_score
+    # on place le jeton dans un nouveau tableau
+    new_board = deepcopy(board)
+    new_board[position][get_last(position, board)] = player
 
-  # si le joueur est l'autre, on inverse le score car un bon score pour l'autre est un mauvais score pour moi
-  if player == m_other:
-    score = -score
+    # calcul du nouveau score du joueur
+    player_score = get_score(new_board, player)
+    if player_score >= m_full_align_score:
+      # si le joueur a gagne, on arrete de jouer, pas besoin de calculer le score de l'autre
+      end = True
+      score = player_score
+    else:
+      other_score = get_score(new_board, other)
+      # on deduit le score de l'autre pour que le score global indique si le jeton profite plus au joueur qu'a l'autre
+      score = player_score - other_score
+    
+    # on augmente le poids des coups proches pour pouvoir converger plus rapidement
+    assert m_max_depth - depth > 0
+    score = score * ((m_max_depth - depth) ** 3)
+    
+  return end, new_board, score
 
-  # on augmente le poids des coups proches pour pouvoir converger plus rapidement
-  assert m_max_depth - depth > 0
-  score = score * ((m_max_depth - depth) ** 2)
 
-  # on continue de jouer si la partie n'est pas terminee et si la profondeur max n'est pas atteinte
-  depth += 1
-  if (not end) and (depth < m_max_depth):
-    # on passe a l'autre joueur, on le fait jouer sur toutes les colonnes
-    # et on accumule le score
-    for x in range(len(new_board)):
-      pos_score = get_play_score(new_board, x, other, player, depth)  # appel recursif
-      if pos_score is not None:
-        score += pos_score
+# calcule le score global lorsqu'on joue a une position en enchainant sur les meilleurs points suivants
+def get_play_score(board, position, player, other, depth):
+  # on joue le point et on recupere le score correspondant
+  end, new_board, score = get_one_point_score(board, position, player, other, depth)
+
+  if score is not None:
+    # si le joueur est l'autre, on inverse le score car un bon score pour l'autre est un mauvais score pour moi
+    if player == m_other:
+      score = -score
+
+    # si ce n'est pas la fin de la partie et que la profondeur max n'est pas atteinte,
+    # on continue sur les points suivants
+    depth += 1
+    if (not end) and (depth < m_max_depth):
+      # on cherche les scores individuels des points suivants
+      scores = []
+      for x in range(len(new_board)):
+        _, _, next_score = get_one_point_score(new_board, x, other, player, depth)  # on change de joueur pour le point suivant
+        if next_score is not None:
+          scores.append((next_score, x))
+
+      # on tri la liste des scores dans l'ordre descendant pour avoir les meilleurs scores en premier
+      scores.sort(reverse=True)
+
+      # on continue a jouer sur les n positions correspondantes aux meilleurs scores
+      assert m_score_count_to_keep <= len(new_board)
+      for i in range(min(m_score_count_to_keep, len(scores))):
+        score += get_play_score(new_board, scores[i][1], other, player, depth)
 
   return score
 

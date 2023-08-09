@@ -41,6 +41,7 @@ class Client(threading.Thread):
         global print_char
         global print_color
         global t
+        global has_one
 
         while True:
             response = self.sock.recv(2048)
@@ -112,12 +113,12 @@ class Game():
         print("Starting game...")
 
     def start(self):
-        rand = randrange(10000)%2
-        if rand == 0:
-            self.client1.send(json.dumps({"type": "START", "you": self.client1.getName(), "other": self.client2.getName(), "play": True}).encode())
-            self.client2.send(json.dumps({"type": "START", "you": self.client2.getName(), "other": self.client1.getName(), "play": False}).encode())
-            self.last = self.client2.getName()
-        else:
+        #rand = randrange(10000)%2
+        #if rand == 0:
+        #    self.client1.send(json.dumps({"type": "START", "you": self.client1.getName(), "other": self.client2.getName(), "play": True}).encode())
+        #    self.client2.send(json.dumps({"type": "START", "you": self.client2.getName(), "other": self.client1.getName(), "play": False}).encode())
+        #    self.last = self.client2.getName()
+        #else:
             self.client2.send(json.dumps({"type": "START", "you": self.client2.getName(), "other": self.client1.getName(), "play": True}).encode())
             self.client1.send(json.dumps({"type": "START", "you": self.client1.getName(), "other": self.client2.getName(), "play": False}).encode())
             self.last = self.client1.getName()
@@ -227,6 +228,11 @@ class GUI():
     def changeColor(self, x, y, color):
         self.cells[(5-y, x)].configure(background=color)
 
+    def clear(self):
+        for y in range(6):
+            for x in range(7):
+                self.changeColor(x, y, 'white')
+
 class Server(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
@@ -253,6 +259,7 @@ class Server(threading.Thread):
                 print_color[str(ip)+str(port)] = "blue"
             newthread.start()
             if (len(clients) == 2 and game == None):
+                t.clear()
                 game = Game(clients[0], clients[1])
                 game.start()
 

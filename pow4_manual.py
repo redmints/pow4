@@ -1,6 +1,5 @@
 import socket
-import sys
-import time
+import os
 import json
 import threading
 
@@ -18,7 +17,12 @@ class Server(threading.Thread):
   def run(self):
     while True:
       response = self.socket.recv(2048)
-      print(json.loads(response))
+      payload = json.loads(response)
+      print(payload)
+      if payload["type"] == "END":
+        print("Gagné : " + str(payload["win"]))
+        os._exit(0)
+
 
 server = Server(socket)
 server.start()
